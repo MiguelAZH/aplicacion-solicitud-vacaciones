@@ -1,0 +1,405 @@
+@model VacationDashboardViewModel
+@{
+    ViewData["Title"] = "Gestión de Vacaciones";
+    var currentUser = (Employee)ViewBag.CurrentUser;
+    var activeFilter = Model.StatusFilter ?? "";
+    var activeReviewFilter = Model.ReviewFilter ?? "";
+    string FilterUrl(string? filter) => $"?statusFilter={filter}";
+    string ActiveClass(string filter) => activeFilter == filter ? "btn-primary" : "btn-outline-secondary";
+    string ReviewFilterUrl(string? filter) => string.IsNullOrEmpty(filter) ? Url.Action("Index")! : $"?reviewFilter={filter}";
+    string ReviewActiveClass(string filter) => activeReviewFilter == filter ? "btn-primary" : "btn-outline-secondary";
+    var reviewedList = currentUser.Role == "Jefe" ? Model.ReviewedBossRequests : Model.ReviewedHRRequests;
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+    <div>
+        <p class="eyebrow mb-1">PORTAL DE VACACIONES</p>
+        <h1 class="mb-1">Bienvenido, @currentUser.Name</h1>
+        <p class="text-secondary mb-0">Rol Simulado: <strong>@currentUser.Role</strong></p>
+    </div>
+    @if (currentUser.Role == "Empleado")
+    {
+        @if (Model.HasPendingRequest)
+        {
+            <span class="btn btn-secondary px-4 disabled" aria-disabled="true">Solicitud pendiente</span>
+        }
+        else
+        {
+            <a class="btn btn-primary px-4" asp-action="Create">+ Solicitar vacaciones</a>
+        }
+    }
+</div>
+
+@if (TempData["Success"] is string success)
+{
+    <div class="alert alert-success border-0 shadow-sm mb-4">@success</div>
+}
+
+@if (TempData["Error"] is string error)
+{
+    <div class="alert alert-danger border-0 shadow-sm mb-4">@error</div>
+}
+
+@if (currentUser.Role == "Empleado")
+{
+    <section class="balance-card mb-5">
+        <div>
+            <p class="mb-1 text-white-50">Días disponibles</p>
+            <div class="display-4 fw-bold">@Model.AvailableDays</div>
+            <p class="mb-0 text-white-50">para disfrutar este año</p>
+        </div>
+        <span class="calendar-mark">☀</span>
+    </section>
+
+    <section>
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+            <h2 class="h4 mb-0">Historial de mis solicitudes</h2>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Filtrar por estado">
+            <a href="@FilterUrl("")" class="btn btn-sm @ActiveClass("")">Todas</a>
+            <a href="@FilterUrl("PendienteJefe")" class="btn btn-sm @ActiveClass("PendienteJefe")">Pendiente Jefe</a>
+            <a href="@FilterUrl("PendienteRRHH")" class="btn btn-sm @ActiveClass("PendienteRRHH")">Pendiente RRHH</a>
+            <a href="@FilterUrl("ConfirmadaRRHH")" class="btn btn-sm @ActiveClass("ConfirmadaRRHH")">Aprobadas</a>
+            <a href="@FilterUrl("RechazadaJefe")" class="btn btn-sm @ActiveClass("RechazadaJefe")">Rechazadas Jefe</a>
+            <a href="@FilterUrl("RechazadaRRHH")" class="btn btn-sm @ActiveClass("RechazadaRRHH")">Rechazadas RRHH</a>
+            <a href="@FilterUrl("Cancelada")" class="btn btn-sm @ActiveClass("Cancelada")">Canceladas</a>
+        </div>
+
+        @if (!Model.Requests.Any())
+        {
+            <div class="empty-state">
+                @(string.IsNullOrEmpty(activeFilter) ? "Aún no tienes solicitudes registradas." : "No hay solicitudes con este estado.")
+            </div>
+        }
+        else
+        {
+            <div class="card border-0 shadow-sm overflow-hidden">
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Periodo</th>
+                                <th>Días hábiles</th>
+                                <th>Motivo</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var request in Model.Requests)
+                            {
+                                <tr>
+                                    <td>
+                                        <strong>@request.StartDate.ToString("dd MMM yyyy")</strong><br />
+                                        <span class="text-secondary small">al @request.EndDate.ToString("dd MMM yyyy")</span>
+                                    </td>
+                                    <td>@request.WorkingDays</td>
+                                    <td>@request.Reason</td>
+                                    <td>
+                                        <span class="status status-@request.Status.ToString().ToLowerInvariant()">@request.StatusDisplay</span>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex gap-2">
+                                            <a class="btn btn-sm btn-outline-primary" asp-action="Details" asp-route-id="@request.Id">Ver detalles</a>
+                                            @if (request.Status == VacationRequestStatus.PendienteJefe)
+                                            {
+                                                <form asp-action="Cancel" asp-route-id="@request.Id" method="post" onsubmit="return confirm('¿Seguro que deseas cancelar esta solicitud?');">
+                                                    <button class="btn btn-sm btn-outline-danger">Cancelar</button>
+                                                </form>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    </section>
+}
+else
+{
+    <ul class="nav nav-tabs mb-4" id="roleTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="my-requests-tab" data-bs-toggle="tab" data-bs-target="#my-requests"
+                    type="button" role="tab" aria-controls="my-requests" aria-selected="true">
+                Historial de solicitudes
+            </button>
+        </li>
+        @if (currentUser.Role == "Jefe")
+        {
+            <li class="nav-item" role="presentation">
+                <button class="nav-link position-relative" id="boss-inbox-tab" data-bs-toggle="tab" data-bs-target="#boss-inbox"
+                        type="button" role="tab" aria-controls="boss-inbox" aria-selected="false">
+                    Bandeja de Jefe
+                    @if (Model.PendingBossRequests.Count > 0)
+                    {
+                        <span class="badge rounded-pill bg-danger ms-1">@Model.PendingBossRequests.Count</span>
+                    }
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="team-tab" data-bs-toggle="tab" data-bs-target="#team-panel"
+                        type="button" role="tab" aria-controls="team-panel" aria-selected="false">
+                    Mi equipo
+                </button>
+            </li>
+        }
+        else if (currentUser.Role == "RRHH")
+        {
+            <li class="nav-item" role="presentation">
+                <button class="nav-link position-relative" id="hr-inbox-tab" data-bs-toggle="tab" data-bs-target="#hr-inbox"
+                        type="button" role="tab" aria-controls="hr-inbox" aria-selected="false">
+                    Bandeja de RRHH
+                    @if (Model.PendingHRRequests.Count > 0)
+                    {
+                        <span class="badge rounded-pill bg-danger ms-1">@Model.PendingHRRequests.Count</span>
+                    }
+                </button>
+            </li>
+        }
+    </ul>
+
+    <div class="tab-content" id="roleTabsContent">
+
+        <div class="tab-pane fade show active" id="my-requests" role="tabpanel" aria-labelledby="my-requests-tab">
+            <section class="mt-2">
+                <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+                    <h2 class="h4 mb-0">
+                        @(currentUser.Role == "Jefe" ? "Solicitudes que aprobé o rechacé" : "Solicitudes que confirmé o rechacé")
+                    </h2>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Filtrar historial">
+                    <a href="@ReviewFilterUrl("")" class="btn btn-sm @ReviewActiveClass("")">Todas</a>
+                    @if (currentUser.Role == "Jefe")
+                    {
+                        <a href="@ReviewFilterUrl("aprobadas")" class="btn btn-sm @ReviewActiveClass("aprobadas")">Aprobadas</a>
+                        <a href="@ReviewFilterUrl("rechazadas")" class="btn btn-sm @ReviewActiveClass("rechazadas")">Rechazadas</a>
+                    }
+                    else
+                    {
+                        <a href="@ReviewFilterUrl("confirmadas")" class="btn btn-sm @ReviewActiveClass("confirmadas")">Confirmadas</a>
+                        <a href="@ReviewFilterUrl("rechazadas")" class="btn btn-sm @ReviewActiveClass("rechazadas")">Rechazadas</a>
+                    }
+                </div>
+
+                @if (!reviewedList.Any())
+                {
+                    <div class="empty-state">Aún no hay solicitudes gestionadas.</div>
+                }
+                else
+                {
+                    <div class="card border-0 shadow-sm overflow-hidden">
+                        <div class="table-responsive">
+                            <table class="table align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Empleado</th>
+                                        <th>Periodo</th>
+                                        <th>Días hábiles</th>
+                                        <th>Mi decisión</th>
+                                        <th>Estado actual</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var request in reviewedList)
+                                    {
+                                        var decision = currentUser.Role == "Jefe" ? request.BossDecisionDisplay : request.HRDecisionDisplay;
+                                        var decisionClass = decision is "Rechazada" or "Rechazada por Jefe" or "Rechazada por RRHH"
+                                            ? "status-rechazadajefe"
+                                            : decision == "Confirmada" ? "status-confirmadarrhh" : "status-pendienterrhh";
+                                        <tr>
+                                            <td><strong>@request.Employee?.Name</strong></td>
+                                            <td>
+                                                <strong>@request.StartDate.ToString("dd MMM yyyy")</strong><br />
+                                                <span class="text-secondary small">al @request.EndDate.ToString("dd MMM yyyy")</span>
+                                            </td>
+                                            <td>@request.WorkingDays</td>
+                                            <td>
+                                                <span class="status @decisionClass">@decision</span>
+                                            </td>
+                                            <td>
+                                                <span class="status status-@request.Status.ToString().ToLowerInvariant()">@request.StatusDisplay</span>
+                                            </td>
+                                            <td>
+                                                <a class="btn btn-sm btn-outline-primary" asp-action="Details" asp-route-id="@request.Id">Ver detalles</a>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            </section>
+        </div>
+
+        @if (currentUser.Role == "Jefe")
+        {
+            <div class="tab-pane fade" id="boss-inbox" role="tabpanel" aria-labelledby="boss-inbox-tab">
+                <section>
+                    <h2 class="h4 mb-3">Solicitudes pendientes de aprobación</h2>
+                    @if (!Model.PendingBossRequests.Any())
+                    {
+                        <div class="empty-state">No hay solicitudes pendientes de aprobación.</div>
+                    }
+                    else
+                    {
+                        <div class="card border-0 shadow-sm overflow-hidden">
+                            <div class="table-responsive">
+                                <table class="table align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Empleado</th>
+                                            <th>Periodo</th>
+                                            <th>Días hábiles</th>
+                                            <th>Motivo</th>
+                                            <th>Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var request in Model.PendingBossRequests)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <strong>@request.Employee?.Name</strong><br />
+                                                    <span class="text-secondary small">Saldo: @request.Employee?.AvailableDays días</span>
+                                                </td>
+                                                <td>
+                                                    <strong>@request.StartDate.ToString("dd MMM yyyy")</strong><br />
+                                                    <span class="text-secondary small">al @request.EndDate.ToString("dd MMM yyyy")</span>
+                                                </td>
+                                                <td>@request.WorkingDays</td>
+                                                <td>@request.Reason</td>
+                                                <td>
+                                                    <a class="btn btn-sm btn-primary" asp-action="Details" asp-route-id="@request.Id">Revisar y Decidir</a>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
+                </section>
+            </div>
+
+            <div class="tab-pane fade" id="team-panel" role="tabpanel" aria-labelledby="team-tab">
+                <section>
+                    <h2 class="h4 mb-3">Mi equipo — Gestión de días disponibles</h2>
+                    <p class="text-secondary mb-4">Empleados a tu cargo. Usa valores positivos para agregar días y negativos para descontar.</p>
+
+                    @if (!Model.Subordinates.Any())
+                    {
+                        <div class="empty-state">No hay empleados a tu cargo registrados.</div>
+                    }
+                    else
+                    {
+                        <div class="row g-3">
+                            @foreach (var emp in Model.Subordinates)
+                            {
+                                <div class="col-md-6 col-lg-4">
+                                    <div class="card border-0 shadow-sm h-100">
+                                        <div class="card-body p-4">
+                                            <div class="d-flex align-items-center gap-3 mb-3">
+                                                <div class="avatar-circle">@emp.Name[0]</div>
+                                                <div>
+                                                    <div class="fw-semibold">@emp.Name</div>
+                                                    <div class="text-secondary small">@emp.AvailableDays días disponibles</div>
+                                                </div>
+                                            </div>
+                                            <form asp-action="AdjustDays" method="post" class="d-flex gap-2 align-items-end">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="employeeId" value="@emp.Id" />
+                                                <div class="flex-grow-1">
+                                                    <label class="form-label small mb-1" for="days-@emp.Id">Ajuste (+ agregar / – quitar)</label>
+                                                    <input id="days-@emp.Id" type="number" name="days" class="form-control form-control-sm" placeholder="Ej: 5 o -3" required />
+                                                </div>
+                                                <button type="submit" class="btn btn-sm btn-primary px-3">Aplicar</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </section>
+            </div>
+        }
+        else if (currentUser.Role == "RRHH")
+        {
+            <div class="tab-pane fade" id="hr-inbox" role="tabpanel" aria-labelledby="hr-inbox-tab">
+                <section>
+                    <h2 class="h4 mb-3">Solicitudes pendientes de confirmación</h2>
+                    @if (!Model.PendingHRRequests.Any())
+                    {
+                        <div class="empty-state">No hay solicitudes pendientes de confirmación para RRHH.</div>
+                    }
+                    else
+                    {
+                        <div class="card border-0 shadow-sm overflow-hidden">
+                            <div class="table-responsive">
+                                <table class="table align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Empleado</th>
+                                            <th>Periodo</th>
+                                            <th>Días hábiles</th>
+                                            <th>Motivo</th>
+                                            <th>Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var request in Model.PendingHRRequests)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <strong>@request.Employee?.Name</strong><br />
+                                                    <span class="text-secondary small">Saldo: @request.Employee?.AvailableDays días</span>
+                                                </td>
+                                                <td>
+                                                    <strong>@request.StartDate.ToString("dd MMM yyyy")</strong><br />
+                                                    <span class="text-secondary small">al @request.EndDate.ToString("dd MMM yyyy")</span>
+                                                </td>
+                                                <td>@request.WorkingDays</td>
+                                                <td>@request.Reason</td>
+                                                <td>
+                                                    <a class="btn btn-sm btn-primary" asp-action="Details" asp-route-id="@request.Id">Revisar y Confirmar</a>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
+                </section>
+            </div>
+        }
+    </div>
+}
+
+@section Scripts {
+    @if (currentUser.Role is "Jefe" or "RRHH" && !string.IsNullOrEmpty(Model.ActiveTab))
+    {
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                var tabMap = {
+                    'team': 'team-tab',
+                    'boss-inbox': 'boss-inbox-tab',
+                    'hr-inbox': 'hr-inbox-tab',
+                    'historial': 'my-requests-tab'
+                };
+                var tabId = tabMap['@Model.ActiveTab'] || '@(Model.ActiveTab)-tab';
+                var tabEl = document.getElementById(tabId);
+                if (tabEl) {
+                    bootstrap.Tab.getOrCreateInstance(tabEl).show();
+                }
+            });
+        </script>
+    }
+}

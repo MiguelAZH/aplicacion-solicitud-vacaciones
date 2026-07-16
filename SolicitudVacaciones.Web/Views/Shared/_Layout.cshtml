@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Vacaciones</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/SolicitudVacaciones.Web.styles.css" asp-append-version="true" />
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-dark app-navbar mb-4">
+            <div class="container-fluid">
+                <a class="navbar-brand fw-semibold" asp-controller="Home" asp-action="Index">Tiempo libre</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
+                        aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
+                    <ul class="navbar-nav flex-grow-1">
+                        <li class="nav-item">
+                            <a class="nav-link" asp-controller="Home" asp-action="Index">Inicio</a>
+                        </li>
+                        @if (ViewBag.CurrentUser != null && ((Employee)ViewBag.CurrentUser).Role == "Empleado" && !VacationRequests.HasPendingRequest(ViewBag.CurrentUser.Id))
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link" asp-controller="Home" asp-action="Create">Nueva solicitud</a>
+                            </li>
+                        }
+                    </ul>
+                    @if (ViewBag.AllEmployees != null && ViewBag.CurrentUser != null)
+                    {
+                        <form asp-controller="Home" asp-action="ChangeUser" method="post" class="d-flex align-items-center ms-auto">
+                            <label class="text-white-50 me-2 small">Simular usuario:</label>
+                            <select name="userId" onchange="this.form.submit()" class="form-select form-select-sm" style="width: auto; background-color: #203d87; color: white; border-color: #3864c9;">
+                                @foreach (var emp in (IReadOnlyList<Employee>)ViewBag.AllEmployees)
+                                {
+                                    if (emp.Id == ((Employee)ViewBag.CurrentUser).Id)
+                                    {
+                                        <option value="@emp.Id" selected="selected">@emp.Name (@emp.Role)</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="@emp.Id">@emp.Name (@emp.Role)</option>
+                                    }
+                                }
+                            </select>
+                        </form>
+                    }
+                </div>
+            </div>
+        </nav>
+    </header>
+    <div class="container">
+        <main role="main" class="pb-3">
+            @RenderBody()
+        </main>
+    </div>
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

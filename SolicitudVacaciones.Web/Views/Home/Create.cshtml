@@ -1,0 +1,261 @@
+@model VacationRequestInputModel
+@{
+    ViewData["Title"] = "Nueva solicitud";
+    var today = DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd");
+}
+
+<div class="row justify-content-center"><div class="col-lg-9">
+    <a asp-action="Index" class="back-link">← Volver a mis solicitudes</a>
+    <h1 class="mt-3">Solicitar vacaciones</h1>
+    <p class="text-secondary mb-4">Selecciona el periodo en el calendario. Los días festivos y fines de semana se marcan y no se descuentan de tu saldo.</p>
+    <div class="card border-0 shadow-sm"><div class="card-body p-4 p-md-5">
+        <form method="post" id="vacation-form">
+            <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+            <div class="calendar-legend mb-3">
+                <span class="legend-item"><span class="legend-dot legend-working"></span> Día hábil</span>
+                <span class="legend-item"><span class="legend-dot legend-weekend"></span> Fin de semana</span>
+                <span class="legend-item"><span class="legend-dot legend-holiday"></span> Festivo</span>
+                <span class="legend-item"><span class="legend-dot legend-selected"></span> Seleccionado</span>
+            </div>
+
+            <div id="visual-calendar" class="visual-calendar mb-4"></div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label asp-for="StartDate" class="form-label"></label>
+                    <input asp-for="StartDate" id="StartDate" class="form-control" type="date" min="@today" />
+                    <span asp-validation-for="StartDate" class="text-danger small"></span>
+                </div>
+                <div class="col-md-6">
+                    <label asp-for="EndDate" class="form-label"></label>
+                    <input asp-for="EndDate" id="EndDate" class="form-control" type="date" min="@today" />
+                    <span asp-validation-for="EndDate" class="text-danger small"></span>
+                </div>
+                <div class="col-12">
+                    <p class="small text-secondary mb-0">Haz clic en el calendario para elegir inicio y fin, o escribe las fechas manualmente.</p>
+                </div>
+                <div class="col-12">
+                    <label asp-for="Reason" class="form-label"></label>
+                    <textarea asp-for="Reason" class="form-control" rows="4" placeholder="Ej.: Viaje familiar"></textarea>
+                    <span asp-validation-for="Reason" class="text-danger small"></span>
+                </div>
+            </div>
+
+            <div id="date-info-panel" class="mt-4" style="display:none;">
+                <div class="card border-0 bg-light">
+                    <div class="card-body p-3">
+                        <h6 class="fw-semibold mb-2">Resumen del rango seleccionado</h6>
+                        <div id="date-info-content" class="small"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4 d-flex gap-2">
+                <button class="btn btn-primary px-4" type="submit">Enviar solicitud</button>
+                <a class="btn btn-light" asp-action="Index">Cancelar</a>
+            </div>
+        </form>
+    </div></div>
+</div></div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        let holidays = [];
+        let viewYear, viewMonth;
+        let pickStep = 0; // 0 = esperando inicio, 1 = esperando fin
+
+        const startInput = document.getElementById('StartDate');
+        const endInput   = document.getElementById('EndDate');
+        const panel      = document.getElementById('date-info-panel');
+        const content    = document.getElementById('date-info-content');
+        const calendarEl = document.getElementById('visual-calendar');
+        const todayIso   = '@today';
+
+        fetch('/Home/Holidays')
+            .then(r => r.json())
+            .then(data => {
+                holidays = data;
+                initCalendar();
+                updateDateInfo();
+            })
+            .catch(() => {
+                initCalendar();
+                updateDateInfo();
+            });
+
+        startInput.addEventListener('change', () => { pickStep = endInput.value ? 0 : 1; updateDateInfo(); renderCalendar(); });
+        endInput.addEventListener('change', () => { pickStep = 0; updateDateInfo(); renderCalendar(); });
+
+        function initCalendar() {
+            const startVal = startInput.value;
+            const base = startVal ? new Date(startVal + 'T00:00:00') : new Date();
+            viewYear = base.getFullYear();
+            viewMonth = base.getMonth();
+            renderCalendar();
+        }
+
+        function renderCalendar() {
+            const holidaySet = new Set(holidays);
+            const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+            const dayNames = ['Lu','Ma','Mi','Ju','Vi','Sa','Do'];
+
+            const startVal = startInput.value;
+            const endVal = endInput.value;
+            const rangeStart = startVal ? parseIso(startVal) : null;
+            const rangeEnd = endVal ? parseIso(endVal) : null;
+
+            let html = '<div class="calendar-nav d-flex justify-content-between align-items-center mb-2">';
+            html += `<button type="button" class="btn btn-sm btn-outline-secondary" id="cal-prev" aria-label="Mes anterior">‹</button>`;
+            html += `<span class="fw-semibold">${monthNames[viewMonth]} ${viewYear}</span>`;
+            html += `<button type="button" class="btn btn-sm btn-outline-secondary" id="cal-next" aria-label="Mes siguiente">›</button>`;
+            html += '</div>';
+
+            html += '<div class="calendar-grid">';
+            dayNames.forEach(d => { html += `<div class="calendar-header">${d}</div>`; });
+
+            const firstDay = new Date(viewYear, viewMonth, 1);
+            let startOffset = firstDay.getDay() - 1;
+            if (startOffset < 0) startOffset = 6;
+
+            for (let i = 0; i < startOffset; i++) {
+                html += '<div class="calendar-cell empty"></div>';
+            }
+
+            const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+            for (let day = 1; day <= daysInMonth; day++) {
+                const d = new Date(viewYear, viewMonth, day);
+                const iso = toIso(d);
+                const dow = d.getDay();
+                const isWeekend = dow === 0 || dow === 6;
+                const isHoliday = holidaySet.has(iso);
+                const isPast = iso < todayIso;
+                const inRange = rangeStart && rangeEnd && iso >= rangeStart && iso <= rangeEnd;
+                const isEdge = iso === rangeStart || iso === rangeEnd;
+
+                let cls = 'calendar-cell day-cell';
+                if (isPast) cls += ' past';
+                if (isHoliday) cls += ' holiday';
+                else if (isWeekend) cls += ' weekend';
+                else cls += ' working';
+                if (inRange) cls += ' in-range';
+                if (isEdge) cls += ' selected-edge';
+
+                let title = '';
+                if (isHoliday) title = 'Festivo';
+                else if (isWeekend) title = dow === 0 ? 'Domingo' : 'Sábado';
+                else title = 'Día hábil';
+
+                html += `<button type="button" class="${cls}" data-date="${iso}" title="${title}" ${isPast ? 'disabled' : ''}>${day}</button>`;
+            }
+            html += '</div>';
+
+            calendarEl.innerHTML = html;
+
+            document.getElementById('cal-prev').addEventListener('click', () => {
+                viewMonth--;
+                if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+                renderCalendar();
+            });
+            document.getElementById('cal-next').addEventListener('click', () => {
+                viewMonth++;
+                if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+                renderCalendar();
+            });
+
+            calendarEl.querySelectorAll('.day-cell:not(.past):not([disabled])').forEach(btn => {
+                btn.addEventListener('click', () => selectDate(btn.dataset.date));
+            });
+        }
+
+        function selectDate(iso) {
+            if (pickStep === 0 || !startInput.value) {
+                startInput.value = iso;
+                endInput.value = iso;
+                endInput.min = iso;
+                pickStep = 1;
+            } else {
+                if (iso < startInput.value) {
+                    endInput.value = startInput.value;
+                    startInput.value = iso;
+                } else {
+                    endInput.value = iso;
+                }
+                pickStep = 0;
+            }
+            updateDateInfo();
+            renderCalendar();
+        }
+
+        function updateDateInfo() {
+            const startVal = startInput.value;
+            const endVal   = endInput.value;
+
+            if (!startVal || !endVal) { panel.style.display = 'none'; return; }
+
+            const start = new Date(startVal + 'T00:00:00');
+            const end   = new Date(endVal   + 'T00:00:00');
+
+            if (end < start) { panel.style.display = 'none'; return; }
+
+            const holidaySet = new Set(holidays);
+            const weekendDays = [];
+            const holidayDays = [];
+            let workingDaysCount = 0;
+
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                const iso = toIso(d);
+                const dow = d.getDay();
+                const isWeekend = dow === 0 || dow === 6;
+                const isHoliday = holidaySet.has(iso);
+
+                if (isWeekend) {
+                    weekendDays.push(formatDate(d) + (isHoliday ? ' (también festivo)' : ''));
+                } else if (isHoliday) {
+                    holidayDays.push(formatDate(d));
+                } else {
+                    workingDaysCount++;
+                }
+            }
+
+            let html = `<div class="mb-1"><strong>Días hábiles a descontar:</strong> <span class="badge bg-primary">${workingDaysCount}</span></div>`;
+
+            if (holidayDays.length > 0) {
+                html += `<div class="mb-1 text-warning-emphasis">
+                    <strong>Festivos en el rango</strong> (no se descuentan):<br>
+                    ${holidayDays.map(d => `<span class="badge bg-warning text-dark me-1 mb-1">${d}</span>`).join('')}
+                </div>`;
+            }
+
+            if (weekendDays.length > 0) {
+                html += `<div class="text-secondary">
+                    <strong>Fines de semana en el rango</strong> (no se descuentan):<br>
+                    ${weekendDays.map(d => `<span class="badge bg-secondary me-1 mb-1">${d}</span>`).join('')}
+                </div>`;
+            }
+
+            if (holidayDays.length === 0 && weekendDays.length === 0) {
+                html += `<div class="text-success small">No hay festivos ni fines de semana en el rango seleccionado.</div>`;
+            }
+
+            content.innerHTML = html;
+            panel.style.display = 'block';
+        }
+
+        function formatDate(d) {
+            return d.toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' });
+        }
+
+        function toIso(d) {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+
+        function parseIso(iso) {
+            return iso;
+        }
+    </script>
+}

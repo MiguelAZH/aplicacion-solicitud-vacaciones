@@ -1,0 +1,134 @@
+@model VacationRequest
+@{
+    ViewData["Title"] = "Detalles de Solicitud";
+    var currentUser = (Employee)ViewBag.CurrentUser;
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <a asp-action="Index" class="back-link">← Volver al inicio</a>
+        
+        <div class="d-flex justify-content-between align-items-center mt-3 mb-4">
+            <div>
+                <h1 class="mb-1">Detalle de Solicitud #@Model.Id</h1>
+                <p class="text-secondary mb-0">Solicitado por <strong>@Model.Employee?.Name</strong></p>
+            </div>
+            <span class="status status-@Model.Status.ToString().ToLowerInvariant()">@Model.StatusDisplay</span>
+        </div>
+
+        @if (TempData["Error"] is string error)
+        {
+            <div class="alert alert-danger border-0 shadow-sm mb-4">@error</div>
+        }
+
+        @if (TempData["Success"] is string success)
+        {
+            <div class="alert alert-success border-0 shadow-sm mb-4">@success</div>
+        }
+
+        <!-- Tarjeta de Detalles Principal -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body p-4">
+                <h5 class="card-title fw-bold mb-3 text-secondary" style="font-size: 0.9rem; letter-spacing: 0.05em; text-transform: uppercase;">Información de la Solicitud</h5>
+                <div class="row g-3">
+                    <div class="col-sm-6">
+                        <span class="text-secondary small d-block">Periodo Solicitado</span>
+                        <strong class="fs-5">@Model.StartDate.ToString("dd MMM yyyy")</strong> al <strong class="fs-5">@Model.EndDate.ToString("dd MMM yyyy")</strong>
+                    </div>
+                    <div class="col-sm-6">
+                        <span class="text-secondary small d-block">Total Días Hábiles</span>
+                        <strong class="fs-4 text-primary">@Model.WorkingDays días</strong>
+                    </div>
+                    <div class="col-12">
+                        <span class="text-secondary small d-block">Motivo</span>
+                        <p class="mb-0 fs-6 bg-light p-3 rounded" style="white-space: pre-wrap;">@Model.Reason</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Formulario de Aprobación/Rechazo del Jefe -->
+        @if (currentUser.Role == "Jefe" && Model.Status == VacationRequestStatus.PendienteJefe)
+        {
+            <div class="card border-0 shadow-sm border-start border-primary border-4 mb-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold text-primary mb-3">Decisión de Aprobación (Rol: Jefe)</h5>
+                    <form method="post" id="bossDecisionForm">
+                        @Html.AntiForgeryToken()
+                        <div class="mb-3">
+                            <label for="bossComment" class="form-label fw-semibold">Comentario / Justificación <span class="text-danger">*</span></label>
+                            <textarea id="bossComment" name="comment" class="form-control" rows="3" required placeholder="Escribe el motivo de tu aprobación o rechazo de esta solicitud..."></textarea>
+                            <div class="invalid-feedback">Por favor ingresa un comentario.</div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" asp-action="ApproveBoss" asp-route-id="@Model.Id" class="btn btn-success px-4">Aprobar Solicitud</button>
+                            <button type="submit" asp-action="RejectBoss" asp-route-id="@Model.Id" class="btn btn-danger px-4">Rechazar Solicitud</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        }
+
+        <!-- Formulario de Confirmación/Rechazo de RRHH -->
+        @if (currentUser.Role == "RRHH" && Model.Status == VacationRequestStatus.PendienteRRHH)
+        {
+            <div class="card border-0 shadow-sm border-start border-warning border-4 mb-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold text-warning mb-3">Decisión Final (Rol: Recursos Humanos)</h5>
+                    <form method="post" id="hrDecisionForm">
+                        @Html.AntiForgeryToken()
+                        <div class="mb-3">
+                            <label for="hrComment" class="form-label fw-semibold">Comentario / Justificación <span class="text-danger">*</span></label>
+                            <textarea id="hrComment" name="comment" class="form-control" rows="3" required placeholder="Escribe el motivo de la confirmación o rechazo de esta solicitud..."></textarea>
+                            <div class="invalid-feedback">Por favor ingresa un comentario.</div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" asp-action="ConfirmHR" asp-route-id="@Model.Id" class="btn btn-success px-4">Confirmar y Descontar Días</button>
+                            <button type="submit" asp-action="RejectHR" asp-route-id="@Model.Id" class="btn btn-danger px-4">Rechazar Solicitud</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        }
+
+        <!-- Historial y Auditoría -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body p-4">
+                <h5 class="card-title fw-bold mb-4 text-secondary" style="font-size: 0.9rem; letter-spacing: 0.05em; text-transform: uppercase;">Historial de Auditoría e Interacciones</h5>
+                
+                @if (Model.Audits == null || !Model.Audits.Any())
+                {
+                    <p class="text-secondary mb-0">No se registran eventos para esta solicitud.</p>
+                }
+                else
+                {
+                    <div class="position-relative ps-4" style="border-left: 2px solid #e9ecef;">
+                        @foreach (var audit in Model.Audits.OrderBy(a => a.CreatedAt))
+                        {
+                            <div class="position-relative mb-4">
+                                <!-- Punto de la línea de tiempo -->
+                                <span class="position-absolute d-inline-block rounded-circle" 
+                                      style="width: 12px; height: 12px; left: -31px; top: 6px; background-color: #335db6; border: 2px solid white; box-shadow: 0 0 0 2px #cbd3e2;">
+                                </span>
+                                <div>
+                                    <div class="d-flex justify-content-between">
+                                        <h6 class="mb-1 fw-bold">@audit.Action</h6>
+                                        <span class="text-secondary small">@audit.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")</span>
+                                    </div>
+                                    <p class="mb-1 text-secondary small">Realizado por: <strong>@audit.ActorName</strong></p>
+                                    @if (!string.IsNullOrWhiteSpace(audit.Comment))
+                                    {
+                                        <div class="bg-light p-2 rounded text-secondary mt-1 small" style="border-left: 3px solid #dee2e6;">
+                                            @audit.Comment
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+    </div>
+</div>
